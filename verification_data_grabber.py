@@ -63,6 +63,7 @@ import pywt
 from scipy.signal import butter, lfilter, lfilter_zi, welch
 from scipy.signal import find_peaks_cwt
 from scipy.signal import correlate
+from scipy.signal import cwt
 import math
 import csv
 
@@ -77,7 +78,12 @@ def readFile(fileName):
                 data[1].append(float(rowList[1]))
             else:
                 data[1].append(float(rowList[2])/(float(rowList[1])+float(rowList[3])))
-    return data[1]
+    return (get_y_reverse_signal(np.asarray(data[1])))
+
+def get_y_reverse_signal(sig):
+    sig_max = np.max(sig)
+    new_sig = sig_max-sig
+    return new_sig
 
 def get_fourier_result (signal, period):
     complex_four = np.fft.fft(signal)
@@ -87,7 +93,21 @@ def get_fourier_result (signal, period):
         freqs.append(1/(period*len(signal))*i)
     return spectra, freqs
 
-
+def get_wavelet(s):
+    fs = 25
+    period = 0.04
+    widths = np.arange(1, 40, 1)
+    cwtmatr, freqs = pywt.cwt(s, widths, 'mexh', period)
+    cwtmatr = cwtmatr[:20,:]
+    freqs = freqs[:20]
+    # print(np.shape(cwtmatr))
+    # plt.imshow(cwtmatr, extent=[0/fs, len(s)/fs, np.max(freqs), np.min(freqs)], cmap='inferno', aspect='auto',
+    # vmax = (cwtmatr).max(), vmin=(cwtmatr).min())
+    # plt.title("Mexican hat transform")
+    # plt.ylabel('Frequency [Hz]')
+    # plt.xlabel('Time [sec]')
+    # plt.show()
+    return cwtmatr
 
 def butter_bandpass(lowcut, highcut, fs, order=3):
     nyq = 0.5 * fs
@@ -104,12 +124,12 @@ def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
     return y
 
 def normalizeSpectrum(spectra):
-    nSp = [spectra[i]/spectra[0] for i in range(len(spectra))]
+    nSp = spectra/spectra[0]
     return nSp
 
 def normalizeSignal(signal):
     m = max(signal)
-    new_sig = [i/m for i in signal]
+    new_sig = signal/m
     return new_sig
 
 def findNearestElemInTheList(lst, elem):
@@ -119,7 +139,7 @@ def findNearestElemInTheList(lst, elem):
 def getSignalIntegral(s_y, s_x, start_x, stop_x):
     str_idx = findNearestElemInTheList(s_x, start_x)
     stp_idx = findNearestElemInTheList(s_x, stop_x)
-    return sum(s_y[str_idx:stp_idx])
+    return np.sum(s_y[str_idx:stp_idx])
 
 def getDixonCriteria(amps, central):
     amps = sorted(amps)
@@ -132,27 +152,62 @@ def getDixonCriteria(amps, central):
 
 def peaks(signal, xAx, dotSize, num):
     peaks = find_peaks_cwt(signal, dotSize)
-    #y = [signal[i] for i in peaks]
-    y = [num for i in peaks]
-    x = [xAx[i] for i in peaks]
+    y = np.asarray([signal[i] for i in peaks])
+    # y = [num for i in peaks]
+    x = np.asarray([xAx[i] for i in peaks])
     return x, y
 
-def compare_by_peaks(y1, x1, y2, x2):
-    y1 = butter_bandpass_filter(y1, 0.5, 5, 25, 3)
-    x1 = range(len(y1))
-    y2 = butter_bandpass_filter(y2, 0.5, 5, 25, 3)
-    x2 = range(len(y2))
-    x1_p, y1_p = peaks(y1, x1, [3], 1)
-    x2_p, y2_p = peaks(y2, x2, [3], 1)
+def delete_peak_doubling(peakX, peakY):
+    truePeaksX = []
+    truePeaksY = []
+    prev = peakX[0]
+    aver = prev
+    averY = [peakY[0]]
+    count = 1
+    for i in range(1, len(peakX)):
+        if peakX[i]-prev<10:
+            aver +=peakX[i]
+            averY.append(peakY[i])
+            count += 1
+        else:
+            truePeaksX.append(aver/count)
+            truePeaksY.append(max(averY))
+            prev = peakX[i]
+            aver = prev
+            averY = [peakY[i]]
+            count = 1
 
-    #plt.scatter(x1_p, y1_p, color='red')
-    #plt.plot(range(len(x1_p)), x1_p)
-    #plt.scatter(x2_p, y2_p, color='blue')
-    #plt.plot(range(len(x2_p)), x2_p)
-    #plt.show()
-    if len(x1_p) == len(x2_p):
-        return True
-    return False
+    return truePeaksX, truePeaksY
+
+
+def compare_by_peaks(y1, x1, y2, x2):
+    y1 = butter_bandpass_filter(y1, 0.5, 3, 25, 3)
+    x1 = range(len(y1))
+    y2 = butter_bandpass_filter(y2, 0.5, 3, 25, 3)
+    x2 = range(len(y2))
+    x1_p, y1_p = peaks(y1, x1, [2, 3, 4], 1)
+    # x1_p, y1_p = delete_peak_doubling(x1_p, y1_p)
+    x2_p, y2_p = peaks(y2, x2, [2, 3, 4], 1)
+    # x2_p, y2_p = delete_peak_doubling(x2_p, y2_p)
+
+    plt.scatter(x1_p, y1_p, color='red')
+    plt.plot(x1, y1)
+    plt.scatter(x2_p, y2_p, color='blue')
+    plt.plot(x2, y2)
+    plt.show()
+    if len(x1_p)>2 and len(x2_p)>2:
+        if len(x1_p) == len(x2_p):
+            # return [True,len(x1_p), len(x2_p)]
+            d_max = 0
+            p1 = x1_p[1:-1]
+            p2 = x2_p[1:-1]
+            for i in range(len(p1)):
+                d = abs(p1[i]-p2[i])
+                if d>d_max:
+                    d_max = d
+            if d_max<= 10:
+                return [True,len(x1_p), len(x2_p)]
+    return [False, len(x1_p), len(x2_p)]
 
 def simple_peaks(signal, xAx, dotSize):
     x = []
@@ -163,11 +218,12 @@ def simple_peaks(signal, xAx, dotSize):
             y.append(signal[i])
     return x,y
 
-def getPeakCount(peaks):
-    return len(peaks)
+def getPeakCount(peaks_x, peaks_y):
+    peaks_cut_x = [peaks_x[i] for i in range(len(peaks_x)) if (peaks_x[i] > 0.5 and peaks_x[i] < 3.0)]
+    return len(peaks_cut_x)
 
-def getPeakMeanValAndSD(peaks):
-    return np.mean(peaks), np.std(peaks)
+def getMeanValAndSD(sig):
+    return np.mean(sig), np.std(sig)
 
 def getSpectrumCentralFrequencyAndAmp(peakX, peakY):
     z = list(zip(peakY, peakX))
@@ -197,8 +253,9 @@ def oneContactlessSignalPiece(signal, period):
     dixi = getDixonCriteria(pY, b)
     d['central_freq'], d['central_freq_amp'] = a, b
     d['dixi'] = dixi
-    d['peak_count'] = getPeakCount(pX)
-    d['peak_mean'], d['peak_SD'] = getPeakMeanValAndSD(pY)
+    d['peak_count'] = getPeakCount(pX, pY)
+    d['peak_mean'], d['peak_SD'] = getMeanValAndSD(pY)
+    d['sig_mean'], d['sig_SD'] = getMeanValAndSD(signal)
     d['peak_matters_SD'] = abs(d['central_freq_amp']-d['peak_mean'])/d['peak_SD']
     d['peak_matters_Int'] = d['central_freq_amp'] / getSignalIntegral(spectra_n, freqs, 0, 3)
     return d, spectra_n, pX, pY
@@ -210,7 +267,7 @@ def oneContactSignalPiece(signal, period):
     Fcentr, FcentrAmp = getSpectrumCentralFrequencyAndAmp(pX, pY)
     return Fcentr, spectra, freqs, pX, pY
 
-def oneFilePairProcedure(contact, contactless, window, name):
+def oneFilePairProcedure(contact, contactless, window, name, prefix):
     per = 0.04
     fullD = []
     targets = 0
@@ -218,37 +275,42 @@ def oneFilePairProcedure(contact, contactless, window, name):
     mean_correlation = 0
     for i in range(min(len(contact), len(contactless))-window):
         contact_cut = normalizeSignal(contact[i:i+window])
+        # contact_wave = get_wavelet(contact_cut)
         contactless_cut = normalizeSignal(contactless[i:i+window])
+        # contactless_wave = get_wavelet(contactless_cut)
+        # wave_matters = np.sum(np.multiply(contactless_wave, contact_wave))/np.sum(np.multiply(contact_wave, contact_wave))
         dictLess, less_sp, p_x_l, p_y_l = oneContactlessSignalPiece(contactless_cut, per)
         if (dictLess == 0):
             continue
         contactHr, contact_sp, fr, p_x, p_y = oneContactSignalPiece(contact_cut, per)
-        peak_comp = compare_by_peaks(contact_cut, range(len(contact_cut)), contactless_cut, range(len(contactless_cut)))
+        peak_res = compare_by_peaks(contact_cut, range(len(contact_cut)), contactless_cut, range(len(contactless_cut)))
+        peak_comp = peak_res[0]
+        dictLess['signal_peaks'] = peak_res[2]
         # plt.plot(fr, contact_sp)
         # plt.plot(fr , less_sp)
         # plt.scatter(p_x, p_y, color='red')
         # plt.scatter(p_x_l, p_y_l, color='black')
         # plt.show()
-        correlation = getCorrelationFuncMax(contactless_cut, contact_cut)/getCorrelationFuncMax(contact_cut, contact_cut)
-        mean_correlation += correlation
-        target = int(abs(dictLess['central_freq']-contactHr) <= 0.015)*correlation
-        if target > 1:
+        # correlation = getCorrelationFuncMax(contactless_cut, contact_cut)/getCorrelationFuncMax(contact_cut, contact_cut)
+        #mean_correlation += correlation
+        target = int(abs(dictLess['central_freq']-contactHr) <= 0.015)*peak_comp
+        if target > 0.75:
             target = 1
         else:
             target = 0
-        dictLess['target'] = peak_comp
+        dictLess['target'] = target
         dictLess['contact_freq'] = contactHr
-        piece_name = name+'_'+str(i)
+        piece_name = name+'_'+str(i)+'_'+prefix
         print(piece_name)
         fullD.append([piece_name, dictLess])
         if target == 1:
             targets += 1
         total += 1
 
-    return fullD, targets, total, mean_correlation
+    return fullD, targets, total#, mean_correlation
 
 def write_q_pulse_report(filename, d):
-    keys = ['central_freq', 'contact_freq', 'central_freq_amp', 'peak_count', 'peak_mean', 'peak_SD', 'peak_matters_SD', 'peak_matters_Int', 'dixi', 'target']
+    keys = ['central_freq', 'contact_freq', 'central_freq_amp', 'peak_count', 'peak_mean', 'peak_SD', 'peak_matters_SD', 'peak_matters_Int', 'dixi', 'signal_peaks', 'sig_mean','sig_SD', 'target']
     with open(filename, 'w') as csvfile:
         writing = csv.writer(csvfile, delimiter = ',')
         writing.writerow(['Name']+keys)
@@ -265,16 +327,18 @@ def oneFolderProcedure(foldName):
     over = 0
     m_c = 0
     for subfold in os.listdir(foldName):
-        signalCon = readFile(foldName+'/'+subfold+'/'+'Contact.txt')
-        signalLess = readFile(foldName+'/'+subfold+'/'+'Contactless.txt')
-        oneFold, a, b, cor = oneFilePairProcedure(signalCon, signalLess, 256, subfold)
-        poses += a
-        over += b
-        m_c += cor
-        seriesData = seriesData + oneFold
-    return seriesData, poses, over, m_c
+        for less_file in ['Contactless.txt', 'Video.txt']:
+            signalCon = readFile(foldName+'/'+subfold+'/'+'Contact.txt')
+            signalLess = readFile(foldName+'/'+subfold+'/'+less_file)
+            oneFold, a, b = oneFilePairProcedure(signalCon, signalLess, 256, subfold, less_file[0:3])
+            poses += a
+            over += b
+            # m_c += cor
+            seriesData = seriesData + oneFold
 
-results, p, t, c = oneFolderProcedure('All_measurements')
+    return seriesData, poses, over#, m_c
+
+results, p, t = oneFolderProcedure('All_measurements')
 print('positives ', p, ' total ', t)
-print("mean correlation ", c/t)
-write_q_pulse_report('total_data_mining.csv', results)
+#print("mean correlation ", c/t)
+write_q_pulse_report('total_data_mining_vid.csv', results)
