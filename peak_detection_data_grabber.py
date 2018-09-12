@@ -72,15 +72,20 @@ def oneFilePairProcedure(contact, contactless, window, name, prefix):
 
     return fullD, targets, total
 
-def write_q_pulse_report(filename, d):
+def write_peak_report(filename, d, width):
     with open(filename, 'w') as csvfile:
+        titles = ['name']
+        for i in range(width):
+            titles.append(i)
         writing = csv.writer(csvfile, delimiter = ',')
+        writing.writerow(titles+['Target'])
+        i = 0
         for row in d:
             rowToWrite = row
             writing.writerow(rowToWrite)
     return
 
-def oneFolderProcedure(foldName):
+def oneFolderProcedure(foldName, window):
     seriesData = []
     poses = 0
     over = 0
@@ -88,14 +93,14 @@ def oneFolderProcedure(foldName):
         for less_file in ['Contactless.txt', 'Video.txt']:
             signalCon = readFile(foldName+'/'+subfold+'/'+'Contact.txt')
             signalLess = readFile(foldName+'/'+subfold+'/'+less_file)
-            oneFold, a, b = oneFilePairProcedure(signalCon, signalLess, 15, subfold, less_file[0:3])
+            oneFold, a, b = oneFilePairProcedure(signalCon, signalLess, window, subfold, less_file[0:3])
             poses += a
             over += b
             seriesData = seriesData + oneFold
 
     return seriesData, poses, over
 
-
-results, p, t = oneFolderProcedure('All_measurements')
+width = 15
+results, p, t = oneFolderProcedure('All_measurements', width)
 print('positives ', p, ' total ', t)
-write_q_pulse_report('peak_data_mining.csv', results)
+write_peak_report('peak_data_mining.csv', results, width)
