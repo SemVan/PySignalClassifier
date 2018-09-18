@@ -9,9 +9,12 @@ from scipy.signal import butter, lfilter, lfilter_zi, welch
 from scipy.signal import find_peaks_cwt
 from scipy.signal import correlate
 from scipy.signal import cwt
+from scipy.interpolate import CubicSpline
 import math
 import csv
+import time
 from math_utils import *
+
 
 def readFile(fileName):
     data = [[], []]
@@ -97,6 +100,41 @@ def getDixonCriteria(amps, central):
 
     return dix
 
+def get_offset(y1, y2):
+    max = 0
+    best_offset = 0
+    for i in range(1,50):
+        scal = np.dot(y1,y2)
+        if scal>max:
+            max = scal
+            best_offset = i-1
+        y2 = y2[i:]
+        y1 = y1[:-i]
+    return best_offset
+
+def move_best(y1, y2):
+    offset = get_offset(y1, y2)
+    print('offset=', offset)
+    new_y1 = []
+    new_y2 = []
+    if offset>=0:
+        new_y1 = y1[offset:]
+        new_y2 = y2[:offset]
+    else:
+        new_y2 = y2[offset:]
+        new_y1 = y1[:offset]
+    plt.plot(range(len(new_y1)), new_y1)
+    plt.plot(range(len(new_y2)), new_y2)
+    plt.show()
+    return new_y1, new_y2
+
+def interpolation(signal, x):
+    step = 0.1
+    new_x = np.arange(x[0], x[len(x)-1], step)
+
+    new_y = CubicSpline(x, signal)
+    return new_x, new_y(new_x)
+
 def peaks(signal, xAx, dotSize, num):
     peaks = find_peaks_cwt(signal, dotSize)
     y = np.asarray([signal[i] for i in peaks])
@@ -109,11 +147,13 @@ def delete_peak_doubling(peakX, peakY):
     truePeaksY = []
     prev = peakX[0]
     aver = prev
+    medi = [prev]
     averY = [peakY[0]]
     count = 1
     for i in range(1, len(peakX)):
-        if peakX[i]-prev<10:
+        if peakX[i]-prev<5:
             aver +=peakX[i]
+            medi.append(peakX)
             averY.append(peakY[i])
             count += 1
         else:
@@ -121,6 +161,7 @@ def delete_peak_doubling(peakX, peakY):
             truePeaksY.append(max(averY))
             prev = peakX[i]
             aver = prev
+            median = [prev]
             averY = [peakY[i]]
             count = 1
 
@@ -128,14 +169,17 @@ def delete_peak_doubling(peakX, peakY):
 
 
 def compare_by_peaks(y1, x1, y2, x2):
-    y1 = butter_bandpass_filter(y1, 0.5, 3, 25, 3)
     x1 = range(len(y1))
-    y2 = butter_bandpass_filter(y2, 0.5, 3, 25, 3)
     x2 = range(len(y2))
-    x1_p, y1_p = peaks(y1, x1, [2, 3, 4], 1)
-    # x1_p, y1_p = delete_peak_doubling(x1_p, y1_p)
-    x2_p, y2_p = peaks(y2, x2, [2, 3, 4], 1)
-    # x2_p, y2_p = delete_peak_doubling(x2_p, y2_p)
+
+    x1, y1 = interpolation(y1, x1)
+    x2, y2 = interpolation(y2, x2)
+
+
+    x1_p, y1_p = peaks(y1, x1, [2,3,4,5], 1)
+    x1_p, y1_p = delete_peak_doubling(x1_p, y1_p)
+    x2_p, y2_p = peaks(y2, x2, [2,3,4,5], 1)
+    x2_p, y2_p = delete_peak_doubling(x2_p, y2_p)
 
     plt.scatter(x1_p, y1_p, color='red')
     plt.plot(x1, y1)
@@ -144,7 +188,6 @@ def compare_by_peaks(y1, x1, y2, x2):
     plt.show()
     if len(x1_p)>2 and len(x2_p)>2:
         if len(x1_p) == len(x2_p):
-            # return [True,len(x1_p), len(x2_p)]
             d_max = 0
             p1 = x1_p[1:-1]
             p2 = x2_p[1:-1]
@@ -153,8 +196,18 @@ def compare_by_peaks(y1, x1, y2, x2):
                 if d>d_max:
                     d_max = d
             if d_max<= 10:
-                return [True,len(x1_p), len(x2_p)]
-    return [False, len(x1_p), len(x2_p)]
+                return [True, len(x1_p), len(x2_p), x1_p, x2_p, y1_p, y2_p, y1, y2]
+    return [False, len(x1_p), len(x2_p), x1_p, x2_p, y1_p, y2_p, y1, y2]
+
+def get_signal_peaks_metrics (pX):
+    hr = []
+    for i in range(len(pX)-1):
+        hr.append(pX[i+1]-pX[i])
+    mean = np.mean(hr)
+    sd = np.std(hr)
+    maxi = np.max(hr)
+    mini = np.min(hr)
+    return mean, sd, maxi, mini
 
 def simple_peaks(signal, xAx, dotSize):
     x = []
