@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 from scipy import signal as sp_sig
+from scipy.stats import moment
 import pywt
 from scipy.signal import butter, lfilter, lfilter_zi, welch
 from scipy.signal import find_peaks_cwt
@@ -25,7 +26,10 @@ def readFile(fileName):
             if len(rowList)==2:
                 data[1].append(float(rowList[1]))
             else:
-                data[1].append(float(rowList[2])/(float(rowList[1])+float(rowList[3])))
+                if (float(rowList[1])+float(rowList[3])>0):
+                    data[1].append(float(rowList[2])/(float(rowList[1])+float(rowList[3])))
+                else:
+                    data[1].append(float(rowList[2]))
     return (get_y_reverse_signal(np.asarray(data[1])))
 
 
@@ -92,13 +96,15 @@ def getSignalIntegral(s_y, s_x, start_x, stop_x):
     return np.sum(s_y[str_idx:stp_idx])
 
 def getDixonCriteria(amps, central):
-    amps = sorted(amps)
-    cen_ndx = findNearestElemInTheList(amps, central)
-    dix = -1
-    if cen_ndx != 0:
-        dix = (amps[cen_ndx] - amps[cen_ndx-1])/(amps[cen_ndx] - amps[0])
-
-    return dix
+    if (len(amps)>2):
+        amps = sorted(amps)
+        cen_ndx = findNearestElemInTheList(amps, central)
+        dix = -1
+        if cen_ndx != 0:
+            dix = (amps[cen_ndx] - amps[cen_ndx-1])/(amps[cen_ndx] - amps[0])
+        return dix
+    else:
+        return -1
 
 def get_offset(y1, y2):
     max = 0
@@ -216,24 +222,28 @@ def simple_peaks(signal, xAx, dotSize):
         if (signal[i]>signal[i+1] and signal[i]>signal[i-1]):
             x.append(xAx[i])
             y.append(signal[i])
+
+    z = list(zip(y, x))
+    y = [z[i][0] for i in range(len(z)) if (z[i][1] > 0.2 and z[i][1] < 3.0)]
+    x = [z[i][1] for i in range(len(z)) if (z[i][1] > 0.2 and z[i][1] < 3.0)]
     return x,y
 
 def getPeakCount(peaks_x, peaks_y):
-    peaks_cut_x = [peaks_x[i] for i in range(len(peaks_x)) if (peaks_x[i] > 0.5 and peaks_x[i] < 3.0)]
+    peaks_cut_x = [peaks_x[i] for i in range(len(peaks_x)) if (peaks_x[i] > 0.2 and peaks_x[i] < 3.0)]
     return len(peaks_cut_x)
 
 def getMeanValAndSD(sig):
-    return np.mean(sig), np.std(sig)
+    if (len(sig)>0):
+        return np.mean(sig), np.std(sig)
+    else:
+        return 0, -1
 
 def getSpectrumCentralFrequencyAndAmp(peakX, peakY):
-    z = list(zip(peakY, peakX))
-    peaks_cut = [z[i][0] for i in range(len(z)) if (z[i][1] > 0.5 and z[i][1] < 3.0)]
-    peaks_cut_x = [z[i][1] for i in range(len(z)) if (z[i][1] > 0.5 and z[i][1] < 3.0)]
-    if len(peaks_cut) == 0:
+    if len(peakX) == 0:
         return -1, -1
-    maxY = np.max(peaks_cut)
-    maxX = peaks_cut_x[np.argmax(peaks_cut)]
-    #print("freq max ", maxX)
+
+    maxY = np.max([peakY])
+    maxX = peakX[np.argmax(peakY)]
     return maxX, maxY
 
 def getPearsonCorrelation(signal1, signal2):
@@ -243,3 +253,12 @@ def getCorrelationFuncMax(signal1, signal2):
     minlen = min(len(signal1), len(signal2))
     corrF = correlate(signal1[0:minlen], signal2[0:minlen], 'full', 'direct')
     return max(corrF)
+
+
+def getDensityMoments(signal):
+    moments = []
+    for i in range(1,5):
+        mom = moment(signal, moment = i)
+        mom = np.nan_to_num(mom)
+        moments.append(mom)
+    return moments

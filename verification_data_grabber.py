@@ -81,22 +81,40 @@ def oneContactlessSignalPiece(signal, period):
     a, b = getSpectrumCentralFrequencyAndAmp(pX, pY)
     dixi = getDixonCriteria(pY, b)
 
+    moms = getDensityMoments(spectra_n)
+    d['first_moment'] = moms[0]
+    d['second_moment'] = moms[1]
+    d['third_moment'] = moms[2]
+    d['forth_moment'] = moms[3]
+
     d['central_freq'], d['central_freq_amp'] = a, b
     d['dixi'] = dixi
     d['peak_count'] = getPeakCount(pX, pY)
     d['peak_mean'], d['peak_SD'] = getMeanValAndSD(pY)
     d['sig_mean'], d['sig_SD'] = getMeanValAndSD(signal)
-    d['peak_matters_SD'] = abs(d['central_freq_amp']-d['peak_mean'])/d['peak_SD']
-    d['peak_matters_Int'] = d['central_freq_amp'] / getSignalIntegral(spectra_n, freqs, 0, 3)
+    if math.isnan(d['sig_mean']):
+        d['sig_mean'] = 0
+    if math.isnan(d['sig_SD']):
+        d['sig_SD'] = 0
 
-    return d, spectra_n, pX, pY
+    d['peak_matters_SD'] = abs(d['central_freq_amp']-d['peak_mean'])/d['peak_SD']
+    if math.isnan(d['peak_matters_SD']):
+        d['peak_matters_SD'] = -1
+    integ = getSignalIntegral(spectra_n, freqs, 0, 3)
+    if integ >0.000001:
+        d['peak_matters_Int'] = d['central_freq_amp'] / integ
+    else:
+        d['peak_matters_Int'] = 100000000
+
+    return d, spectra_n, pX, pY, freqs
 
 def oneContactSignalPiece(signal, period):
     d = {}
     spectra, freqs = get_fourier_result(signal, period)
+    spectra = normalizeSpectrum(spectra)
     pX, pY = simple_peaks(spectra, freqs, np.arange(1, 3))
     Fcentr, FcentrAmp = getSpectrumCentralFrequencyAndAmp(pX, pY)
-    return Fcentr, spectra, freqs, pX, pY
+    return Fcentr, FcentrAmp, spectra, freqs, pX, pY, freqs
 
 def oneFilePairProcedure(contact, contactless, window, name, prefix):
     per = 0.04
@@ -106,44 +124,55 @@ def oneFilePairProcedure(contact, contactless, window, name, prefix):
     mean_correlation = 0
     small_window = 128
 
-    for i in range(0, min(len(contact), len(contactless))-window, 10):
+    for i in range(0, min(len(contact), len(contactless))-window, 5):
         contact_cut = normalizeSignal(contact[i:i+window])
         contactless_cut = normalizeSignal(contactless[i:i+window])
-        contact_cut = butter_bandpass_filter(contact_cut, 0.5, 3, 25, 3)
+        contact_cut = butter_bandpass_filter(contact_cut, 0.8, 2.2, 25, 3)
         contactless_cut = butter_bandpass_filter(contactless_cut, 0.5, 3, 25, 3)
 
         offset = get_offset(contactless_cut, contact_cut)
         if offset>0:
             contactless_cut = contactless_cut[:-offset]
             contact_cut = contact_cut[offset:]
+        contactless_cut = contactless_cut[:small_window]
+        contact_cut = contact_cut[:small_window]
+        # av = 0
+        # k = 0
+        # for j in range(0, min(len(contact_cut), len(contactless_cut))-small_window, 5):
+        #     s = contact_cut[j:j+small_window]
+        #     s_l = contactless_cut[j:j+small_window]
+        #     k_res = compare_by_peaks(s, range(len(s)), s_l, range(len(s_l)))
+        #     if k_res[0]==True:
+        #         av += 1
+        #     k += 1
 
-        av = 0
-        k = 0
-        for j in range(0, min(len(contact_cut), len(contactless_cut))-small_window, 5):
-            s = contact_cut[j:j+small_window]
-            s_l = contactless_cut[j:j+small_window]
-            k_res = compare_by_peaks(s, range(len(s)), s_l, range(len(s_l)))
-            if k_res[0]==True:
-                av += 1
-            k += 1
 
+        # if (av/k>0.5):
+        #     target = 1
+        # else:
+        #     target = -1
 
-        if (av/k>0.5):
-            target = 1
-        else:
-            target = -1
-        dictLess, less_sp, p_x_l, p_y_l = oneContactlessSignalPiece(contactless_cut, per)
+        dictLess, less_sp, p_x_l, p_y_l, fr_l = oneContactlessSignalPiece(contactless_cut, per)
         if (dictLess == 0):
             continue
-        contactHr, contact_sp, fr, p_x, p_y = oneContactSignalPiece(contact_cut, per)
-        peak_res = compare_by_peaks(contact_cut, range(len(contact_cut)), contactless_cut, range(len(contactless_cut)))
-        peak_comp = peak_res[0]
-        p_mean, p_std, p_maxi, p_mini = get_signal_peaks_metrics(peak_res[4])
-        dictLess['signal_peaks'] = peak_res[2]
-        dictLess['p_mean'] = p_mean
-        dictLess['p_std'] = p_std
-        dictLess['p_maxi'] = p_maxi
-        dictLess['p_mini'] = p_mini
+        contactHr, hr_fr, contact_sp, fr, p_x, p_y, fr = oneContactSignalPiece(contact_cut, per)
+        corr_coeff_sp = getPearsonCorrelation(less_sp, contact_sp)
+        auto_corr_coeff_sp = getPearsonCorrelation(contact_sp, contact_sp)
+        corr_coeff_sp = corr_coeff_sp/auto_corr_coeff_sp
+
+
+
+        # peak_res = compare_by_peaks(contact_cut, range(len(contact_cut)), contactless_cut, range(len(contactless_cut)))
+        # peak_comp = peak_res[0]
+        # p_mean, p_std, p_maxi, p_mini = get_signal_peaks_metrics(peak_res[4])
+        # dictLess['signal_peaks'] = peak_res[2]
+        # dictLess['p_mean'] = p_mean
+        # dictLess['p_std'] = p_std
+        # dictLess['p_maxi'] = p_maxi
+        # dictLess['p_mini'] = p_mini
+        corr_coeff = getPearsonCorrelation(contact_cut, contactless_cut)
+        auto_corr_coeff = getPearsonCorrelation(contact_cut, contact_cut)
+        corr_coeff = corr_coeff/auto_corr_coeff
 
         # plt.plot(range(len(peak_res[8])), peak_res[8])
         # plt.plot(range(len(peak_res[7])), peak_res[7])
@@ -151,11 +180,18 @@ def oneFilePairProcedure(contact, contactless, window, name, prefix):
         # plt.scatter(peak_res[3], peak_res[5], color = 'black')
         # plt.show()
 
-        # target = peak_comp
-        # if target > 0.75:
-        #     target = 1
-        # else:
-        #     target = -1
+        target = int(abs(contactHr-dictLess['central_freq'])==0)#*(corr_coeff + corr_coeff_sp)
+        if target >= 0.9:
+            target = 1
+            print(dictLess['central_freq'], hr_fr)
+            plt.plot(fr_l, less_sp)
+            plt.scatter(dictLess['central_freq'], dictLess['central_freq_amp'], color='red')
+            plt.xlim([0,4])
+            plt.plot(fr, contact_sp)
+            plt.scatter(contactHr, hr_fr, color='black')
+            plt.show()
+        else:
+            target = -1
         dictLess['target'] = target
         dictLess['contact_freq'] = contactHr
         piece_name = name+'_'+str(i)+'_'+prefix
@@ -169,8 +205,12 @@ def oneFilePairProcedure(contact, contactless, window, name, prefix):
     return fullD, targets, total#, mean_correlation
 
 def write_q_pulse_report(filename, d):
+    # keys = ['central_freq', 'contact_freq', 'central_freq_amp', 'peak_count',
+    #  'peak_mean', 'peak_SD', 'peak_matters_SD', 'peak_matters_Int', 'dixi', 'signal_peaks', 'sig_mean','sig_SD','p_mean', 'p_std', 'p_maxi', 'p_mini', 'target']
     keys = ['central_freq', 'contact_freq', 'central_freq_amp', 'peak_count',
-     'peak_mean', 'peak_SD', 'peak_matters_SD', 'peak_matters_Int', 'dixi', 'signal_peaks', 'sig_mean','sig_SD','p_mean', 'p_std', 'p_maxi', 'p_mini', 'target']
+        'peak_mean', 'peak_SD', 'peak_matters_SD', 'peak_matters_Int', 'dixi', 'sig_mean','sig_SD', 'first_moment', 'second_moment', 'third_moment', 'forth_moment', 'target']
+
+
     with open(filename, 'w') as csvfile:
         writing = csv.writer(csvfile, delimiter = ',')
         writing.writerow(['Name']+keys)
@@ -195,22 +235,22 @@ def oneFolderProcedure(foldName):
     over = 0
     m_c = 0
     for subfold in os.listdir(foldName):
-        # for less_file in ['Video.txt', 'Contactless.txt']:
-        for less_file in ['Video.txt']:
+        for less_file in ['Video.txt', 'Contactless.txt']:
+            print(subfold)
             signalCon = readFile(foldName+'/'+subfold+'/'+'Contact.txt')
             signalLess = readFile(foldName+'/'+subfold+'/'+less_file)
             # vizualize(signalCon, signalLess)
             # signalCon = butter_bandpass_filter(signalCon, 0.5, 3, 25, 3)
             # signalLess = butter_bandpass_filter(signalLess, 0.5, 3, 25, 3)
             # vizualize(signalCon, signalLess)
-            oneFold, a, b = oneFilePairProcedure(signalCon, signalLess, 256, subfold, less_file[0:3])
+            oneFold, a, b = oneFilePairProcedure(signalCon, signalLess, 200, subfold, less_file[0:3])
             poses += a
             over += b
             seriesData = seriesData + oneFold
 
     return seriesData, poses, over
 
-results, p, t = oneFolderProcedure('Exp_measurements')
+results, p, t = oneFolderProcedure('All_measurements')
 print('positives ', p, ' total ', t)
 #print("mean correlation ", c/t)
 write_q_pulse_report('total_data_mining_dev.csv', results)
