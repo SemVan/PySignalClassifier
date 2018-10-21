@@ -106,10 +106,11 @@ def oneContactlessSignalPiece(signal, period):
     if math.isnan(d['peak_matters_SD']):
         d['peak_matters_SD'] = -1
     integ = getSignalIntegral(spectra_n, freqs, 0, 3)
-    if integ >0.000001:
+
+    if integ>0.000001:
         d['peak_matters_Int'] = d['central_freq_amp'] / integ
     else:
-        d['peak_matters_Int'] = 100000000
+        d['peak_matters_Int'] = 10000000
 
     return d, spectra_n, pX, pY, freqs, Fsec_x, Fsec
 
@@ -128,12 +129,12 @@ def oneFilePairProcedure(contact, contactless, window, name, prefix):
     total = 0
     mean_correlation = 0
     small_window = 256
-    printed = False
+    printed = True
 
-    for i in range(0, min(len(contact), len(contactless))-window, 5):
+    for i in range(0, min(len(contact), len(contactless))-window):
         contact_cut = normalizeSignal(contact[i:i+window])
         contactless_cut = normalizeSignal(contactless[i:i+window])
-        contact_cut = butter_bandpass_filter(contact_cut, 0.8, 2.2, 25, 3)
+        contact_cut = butter_bandpass_filter(contact_cut, 0.5, 3, 25, 3)
         contactless_cut = butter_bandpass_filter(contactless_cut, 0.5, 3, 25, 3)
 
         offset = get_offset(contactless_cut, contact_cut)
@@ -193,7 +194,7 @@ def oneFilePairProcedure(contact, contactless, window, name, prefix):
 
         if target >= 0.9:
             target = 1
-            if printed:
+            if printed and dictLess['x_relation']>0.6:
                 plt.plot(fr_l, less_sp)
                 plt.scatter(dictLess['central_freq'], dictLess['central_freq_amp'], color='red')
                 plt.scatter(Fsx_less, Fs_less, color='red')
@@ -263,7 +264,7 @@ def oneFolderProcedure(foldName):
 
     return seriesData, poses, over
 
-results, p, t = oneFolderProcedure('All_measurements')
+results, p, t = oneFolderProcedure('Exp_measurements')
 print('positives ', p, ' total ', t)
 #print("mean correlation ", c/t)
 write_q_pulse_report('total_data_mining_dev.csv', results)

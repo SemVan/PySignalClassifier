@@ -93,7 +93,7 @@ def findNearestElemInTheList(lst, elem):
 def getSignalIntegral(s_y, s_x, start_x, stop_x):
     str_idx = findNearestElemInTheList(s_x, start_x)
     stp_idx = findNearestElemInTheList(s_x, stop_x)
-    return np.sum(s_y[str_idx:stp_idx])
+    return np.sum(s_y[:int(len(s_y)/2)])
 
 def getDixonCriteria(amps, central):
     if (len(amps)>2):
@@ -239,7 +239,7 @@ def getMeanValAndSD(sig):
         return 0, -1
 
 def getSpectrumCentralFrequencyAndAmp(peakX, peakY):
-    
+
     if len(peakX) == 0:
         return 0, 0, 0, 0
     result = list(reversed(sorted(zip(peakY, peakX))))
