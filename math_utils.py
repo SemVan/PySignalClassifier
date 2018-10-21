@@ -224,8 +224,8 @@ def simple_peaks(signal, xAx, dotSize):
             y.append(signal[i])
 
     z = list(zip(y, x))
-    y = [z[i][0] for i in range(len(z)) if (z[i][1] > 0.2 and z[i][1] < 3.0)]
-    x = [z[i][1] for i in range(len(z)) if (z[i][1] > 0.2 and z[i][1] < 3.0)]
+    y = [z[i][0] for i in range(len(z)) if (z[i][1] > 0.2 and z[i][1] < 4.0)]
+    x = [z[i][1] for i in range(len(z)) if (z[i][1] > 0.2 and z[i][1] < 4.0)]
     return x,y
 
 def getPeakCount(peaks_x, peaks_y):
@@ -239,12 +239,19 @@ def getMeanValAndSD(sig):
         return 0, -1
 
 def getSpectrumCentralFrequencyAndAmp(peakX, peakY):
+    
     if len(peakX) == 0:
-        return -1, -1
+        return 0, 0, 0, 0
+    result = list(reversed(sorted(zip(peakY, peakX))))
+    maxY = result[0][0]
+    maxX = result[0][1]
+    fsec = 0
+    fsec_x = 0
+    if (len(result)>1):
+        fsec = result[1][0]
+        fsec_x = result[1][1]
 
-    maxY = np.max([peakY])
-    maxX = peakX[np.argmax(peakY)]
-    return maxX, maxY
+    return maxX, maxY, fsec_x, fsec
 
 def getPearsonCorrelation(signal1, signal2):
     return np.corrcoef(signal1,signal2)[0][1]
